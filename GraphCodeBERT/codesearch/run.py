@@ -647,50 +647,50 @@ def save_valid_code_attention_features(args, model, tokenizer,pool):
     tokenized_id = []
 
     # set code index here to store the corresponding token feature
-    sample_index = 4732
+    sample_index = 6625
 
-    # for first run, we store all cls tokens and attention features
-    for step,batch in enumerate(train_dataloader):
-        code_inputs = batch[0].to(args.device)  
-        attn_mask = batch[1].to(args.device)
-        position_idx = batch[2].to(args.device)
-        code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+    # # for first run, we store all cls tokens and attention features
+    # for step,batch in enumerate(train_dataloader):
+    #     code_inputs = batch[0].to(args.device)  
+    #     attn_mask = batch[1].to(args.device)
+    #     position_idx = batch[2].to(args.device)
+    #     code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
 
-        for code_input in code_inputs:
-            # code_input 是一个包含多个 token IDs 的列表
-            code_token_ids = code_input.tolist()
-            code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
-            code_tokens_strs.append(code_tokens_str)
+    #     for code_input in code_inputs:
+    #         # code_input 是一个包含多个 token IDs 的列表
+    #         code_token_ids = code_input.tolist()
+    #         code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
+    #         code_tokens_strs.append(code_tokens_str)
 
-        # get code and nl vectors
-        code_vec = code_outputs[1]
+    #     # get code and nl vectors
+    #     code_vec = code_outputs[1]
 
-        # 获取注意力权重
-        code_attentions = code_outputs[2]  # List of tensors, one for each layer
-        code_last_layer_attention = code_attentions[-1]
-        code_cls_attention = code_last_layer_attention[:, :, 0, :].mean(dim=1)
+    #     # 获取注意力权重
+    #     code_attentions = code_outputs[2]  # List of tensors, one for each layer
+    #     code_last_layer_attention = code_attentions[-1]
+    #     code_cls_attention = code_last_layer_attention[:, :, 0, :].mean(dim=1)
 
-        all_code_cls_attention.append(code_cls_attention.cpu().detach().numpy())
+    #     all_code_cls_attention.append(code_cls_attention.cpu().detach().numpy())
 
-        code_token.append(code_vec.cpu().detach().numpy())
+    #     code_token.append(code_vec.cpu().detach().numpy())
         
-    code_token = np.concatenate(code_token, 0)
-    all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
+    # code_token = np.concatenate(code_token, 0)
+    # all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
 
-    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    # output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
 
-    print(code_token.shape)
-    code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_batch_retrieval.npy')
-    np.save(code_token_output_path, code_token)
+    # print(code_token.shape)
+    # code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_batch_retrieval.npy')
+    # np.save(code_token_output_path, code_token)
 
-    ### cls accumulative attention
-    print(all_code_cls_attention.shape)
-    code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_batch_retrieval.npy')
-    np.save(code_attention_output_path, all_code_cls_attention)
+    # ### cls accumulative attention
+    # print(all_code_cls_attention.shape)
+    # code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_batch_retrieval.npy')
+    # np.save(code_attention_output_path, all_code_cls_attention)
 
-    print(len(code_tokens_strs))
-    with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
-        json.dump(code_tokens_strs, f)
+    # print(len(code_tokens_strs))
+    # with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
+    #     json.dump(code_tokens_strs, f)
 
     # for observation, we store certain code tokens and tokenized ids
     for step,batch in enumerate(train_dataloader):
@@ -752,49 +752,49 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
     code_tokens_strs = []
     tokenized_id = []
     # set code index here to store the corresponding token feature
-    sample_index = 4732
-    # for first run, we store all cls tokens and attention features
-    for step,batch in enumerate(train_dataloader):
-        code_inputs = batch[0].to(args.device)  
-        attn_mask = batch[1].to(args.device)
-        position_idx = batch[2].to(args.device)
-        code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+    sample_index = 6625
+    # # for first run, we store all cls tokens and attention features
+    # for step,batch in enumerate(train_dataloader):
+    #     code_inputs = batch[0].to(args.device)  
+    #     attn_mask = batch[1].to(args.device)
+    #     position_idx = batch[2].to(args.device)
+    #     code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
 
-        for code_input in code_inputs:
-            # code_input 是一个包含多个 token IDs 的列表
-            code_token_ids = code_input.tolist()
-            code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
-            code_tokens_strs.append(code_tokens_str)
+    #     for code_input in code_inputs:
+    #         # code_input 是一个包含多个 token IDs 的列表
+    #         code_token_ids = code_input.tolist()
+    #         code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
+    #         code_tokens_strs.append(code_tokens_str)
 
-        # get code and nl vectors
-        code_vec = code_outputs[1]
+    #     # get code and nl vectors
+    #     code_vec = code_outputs[1]
 
-        # 获取注意力权重
-        code_attentions = code_outputs[2]  # List of tensors, one for each layer
-        code_last_layer_attention = code_attentions[-1]
-        code_cls_attention = code_last_layer_attention[:, :, 0, :].mean(dim=1)
+    #     # 获取注意力权重
+    #     code_attentions = code_outputs[2]  # List of tensors, one for each layer
+    #     code_last_layer_attention = code_attentions[-1]
+    #     code_cls_attention = code_last_layer_attention[:, :, 0, :].mean(dim=1)
 
-        all_code_cls_attention.append(code_cls_attention.cpu().detach().numpy())
+    #     all_code_cls_attention.append(code_cls_attention.cpu().detach().numpy())
 
-        code_token.append(code_vec.cpu().detach().numpy())
+    #     code_token.append(code_vec.cpu().detach().numpy())
         
-    code_token = np.concatenate(code_token, 0)
-    all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
+    # code_token = np.concatenate(code_token, 0)
+    # all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
 
-    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    # output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
 
-    print(code_token.shape)
-    code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_align_attention_batch_retrieval.npy')
-    np.save(code_token_output_path, code_token)
+    # print(code_token.shape)
+    # code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_align_attention_batch_retrieval.npy')
+    # np.save(code_token_output_path, code_token)
 
-    ### cls accumulative attention
-    print(all_code_cls_attention.shape)
-    code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_align_attention_batch_retrieval.npy')
-    np.save(code_attention_output_path, all_code_cls_attention)
+    # ### cls accumulative attention
+    # print(all_code_cls_attention.shape)
+    # code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_align_attention_batch_retrieval.npy')
+    # np.save(code_attention_output_path, all_code_cls_attention)
 
-    print(len(code_tokens_strs))
-    with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
-        json.dump(code_tokens_strs, f)
+    # print(len(code_tokens_strs))
+    # with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
+    #     json.dump(code_tokens_strs, f)
 
     # for observation, we store certain code tokens and tokenized ids
     for step,batch in enumerate(train_dataloader):
@@ -831,10 +831,6 @@ def save_tokens_features(args, model, tokenizer,pool):
     train_sampler = SequentialSampler(train_dataset)
     train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
     
-    #get optimizer and scheduler
-    optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=1e-8)
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0,num_training_steps=len(train_dataloader)*args.num_train_epochs)
-    
     # multi-gpu training (should be after apex fp16 initialization)
     if args.n_gpu > 1:
         model = torch.nn.DataParallel(model)
@@ -850,45 +846,40 @@ def save_tokens_features(args, model, tokenizer,pool):
     # model.resize_token_embeddings(len(tokenizer))
     model.zero_grad()
     
-    model.train()
-    tr_num,tr_loss,best_mrr=0,0,0 
-    # for idx in range(args.num_train_epochs): 
-    output_dir = "/home/yiming/cophi/training_dynamic/graphcodebert_token/Model/Epoch_10"
-    ckpt_output_path = "/home/yiming/cophi/training_dynamic/graphcodebert_token/Model/Epoch_10/subject_model.pth"
+    model.eval()
+    # output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(1))
+    # ckpt_output_path = os.path.join(output_dir, 'subject_model.pth')
 
-    model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
+    # model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
     model.to(args.device)
-    code_tokens, nl_tokens = [], []
+    code_token, nl_token = [], []
 
     for step,batch in enumerate(train_dataloader):
-        #get inputs
-        if step == 0:
-            code_inputs = batch[0].to(args.device)  
-            attn_mask = batch[1].to(args.device)
-            position_idx = batch[2].to(args.device)
-            nl_inputs = batch[3].to(args.device)
-            code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
-            nl_outputs = model(nl_inputs=nl_inputs)
-            local_index = 0
-            code_last_hidden_state = code_outputs[0]
-            code_tokens.append(code_last_hidden_state[local_index].unsqueeze(0).cpu().detach().numpy())
-            nl_last_hidden_state = nl_outputs[0]
-            nl_tokens.append(nl_last_hidden_state[local_index].unsqueeze(0).cpu().detach().numpy())
+        if step % 1000 == 0:
+            logger.info("  cur steps = %d", step)
+        code_inputs = batch[0].to(args.device)  
+        attn_mask = batch[1].to(args.device)
+        position_idx = batch[2].to(args.device)
+        # nl_inputs = batch[3].to(args.device)
+        code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+        # nl_outputs = model(nl_inputs=nl_inputs)
 
-            code_token_ids = code_inputs[local_index].tolist()
-            code_tokens_str = [tokenizer.convert_ids_to_tokens(id) for id in code_token_ids]
+        #get code and nl vectors
+        code_vec = code_outputs[1]
+        # nl_vec = nl_outputs[1]
 
-    with open('/home/yiming/cophi/training_dynamic/graphcodebert_token/Model/Epoch_10/tokenized_code_tokens.json', 'w') as f:
-        json.dump(code_tokens_str, f)
+        code_token.append(code_vec.cpu().detach().numpy())
+        # nl_token.append(nl_vec.cpu().detach().numpy())
         
-    code_tokens = np.concatenate(code_tokens, 0)
-    nl_tokens = np.concatenate(nl_tokens, 0)
+    code_token = np.concatenate(code_token, 0)
+    # nl_token = np.concatenate(nl_token, 0)
 
-    print(code_tokens.shape, nl_tokens.shape)
-    code_token_output_path = os.path.join(output_dir, 'code_tokens.npy')
-    nl_tokens_output_path = os.path.join(output_dir, 'nl_tokens.npy')
-    np.save(code_token_output_path, code_tokens)
-    np.save(nl_tokens_output_path, nl_tokens)
+    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+
+    print(code_token.shape)
+    code_token_output_path = os.path.join(output_dir, 'train_code_cls_token_pt.npy')
+    # nl_token_output_path = os.path.join(output_dir, 'train_nl_cls_token_pt.npy')
+    np.save(code_token_output_path, code_token)
 
 def save_attention_features_code(args, model, tokenizer,pool):
     """ Train the model """
@@ -1510,6 +1501,52 @@ def train_alignment_sample(args, model, tokenizer,pool):
 
     print("Loss values saved.")
 
+def save_tokenized_strs(args, model, tokenizer,pool):
+    """ Train the model """
+    #get training dataset
+    train_dataset=TextDataset(tokenizer, args, args.train_data_file, pool)
+    train_sampler = SequentialSampler(train_dataset)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
+    
+    # multi-gpu training (should be after apex fp16 initialization)
+    if args.n_gpu > 1:
+        model = torch.nn.DataParallel(model)
+
+    # Train!
+    logger.info("***** Running training *****")
+    logger.info("  Num examples = %d", len(train_dataset))
+    logger.info("  Num Epochs = %d", args.num_train_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size//args.n_gpu)
+    logger.info("  Total train batch size  = %d", args.train_batch_size)
+    logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
+    
+    model.zero_grad()
+    model.eval()
+    code_tokens_strs = []
+    nl_tokens_strs = []
+    for step, batch in enumerate(train_dataloader):
+        code_inputs = batch[0].to(args.device)  
+        nl_inputs = batch[3].to(args.device)
+        # 遍历当前 batch 中每个数据，提取 tokens str
+        for local_index in range(len(code_inputs)):  # 假设每个 batch 中有多个数据
+            code_tokens = code_inputs[local_index].tolist()
+            code_tokens_str = [tokenizer.convert_ids_to_tokens(id) for id in code_tokens]
+
+            nl_tokens = nl_inputs[local_index].tolist()
+            nl_tokens_str = [tokenizer.convert_ids_to_tokens(id) for id in nl_tokens]
+            
+            # 将当前的 tokens str 添加到总列表中
+            code_tokens_strs.append(code_tokens_str)
+            nl_tokens_strs.append(nl_tokens_str)
+
+    print(len(code_tokens_strs), len(nl_tokens_strs))
+
+    with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/tokenized_code_tokens_train.json', 'w') as f:
+        json.dump(code_tokens_strs, f)
+    
+    with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/tokenized_comment_tokens_train.json', 'w') as f:
+        json.dump(nl_tokens_strs, f)
+
 def extract_indices(similar_pairs):
     """
     从相似度对中提取所有出现的 i 和 j 索引，并去重。
@@ -1897,12 +1934,13 @@ def main():
         # save_feature(args, model, tokenizer, pool)
         train_alignment_sample(args, model, tokenizer, pool)
         # save_attention_features(args, model, tokenizer, pool)
-        # save_valid_attention_features(args, model, tokenizer, pool)
+        save_valid_attention_features(args, model, tokenizer, pool)
         save_valid_code_attention_features(args, model, tokenizer, pool)
         save_valid_code_attention_features_aa(args, model, tokenizer, pool)
         # save_attention_features_code(args, model, tokenizer, pool)
         # train_data_preprocess(args, model, tokenizer, pool)
         # save_tokens_features(args, model, tokenizer, pool)
+        # save_tokenized_strs(args, model, tokenizer, pool)
 
     # Evaluation
     results = {}
