@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import random
 import json
 import os
+from itertools import chain
 
 class Model(nn.Module):   
     def __init__(self, encoder):
@@ -23,9 +24,9 @@ class Model(nn.Module):
             nodes_to_token_mask=nodes_to_token_mask/(nodes_to_token_mask.sum(-1)+1e-10)[:,:,None]
             avg_embeddings=torch.einsum("abc,acd->abd",nodes_to_token_mask,inputs_embeddings)
             inputs_embeddings=inputs_embeddings*(~nodes_mask)[:,:,None]+avg_embeddings*nodes_mask[:,:,None]    
-            return self.encoder(inputs_embeds=inputs_embeddings,attention_mask=attn_mask,position_ids=position_idx, output_attentions=True)
+            return self.encoder(inputs_embeds=inputs_embeddings,attention_mask=attn_mask,position_ids=position_idx, output_attentions=True, output_hidden_states=True)
         else:
-            return self.encoder(nl_inputs,attention_mask=nl_inputs.ne(1), output_attentions=True)
+            return self.encoder(nl_inputs,attention_mask=nl_inputs.ne(1), output_attentions=True, output_hidden_states=True)
             # , output_hidden_states=True
         
     def ori_loss(self, code_inputs, code_outputs, nl_outputs):
@@ -422,7 +423,7 @@ class Model(nn.Module):
         align_outputs_2 = code_outputs[0][local_index]
 
         lcs_pairs = sample_align
-        loss_align_code = self.build_contrastive_pairs(align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens)
+        loss_align_code = self.build_contrastive_pairs_effecient(align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens)
         # print("loss_align_code",loss_align_code)
         
         # attention loss part
@@ -484,6 +485,143 @@ class Model(nn.Module):
         # print("nl_cls_attention",nl_cls_attention)
 
         return retrieval_loss, code_vec, nl_vec, loss_align_code, attention_loss
+    
+    def batch_alignment_v0(self, code_inputs, code_outputs, nl_outputs, local_index, sample_align, total_code_tokens):
+        
+        align_outputs_1 = nl_outputs[0][local_index]
+        align_outputs_2 = code_outputs[0][local_index]
+
+        lcs_pairs = sample_align
+        loss_align_code = self.build_contrastive_pairs(align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens)
+        # print("loss_align_code",loss_align_code)
+        
+        # attention loss part
+        code_attentions = code_outputs[2]  # List of tensors, one for each layer
+        nl_attentions = nl_outputs[2]  # List of tensors, one for each layer
+
+        code_last_layer_attention = code_attentions[-1]
+        code_cls_attention = code_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+        
+        nl_last_layer_attention = nl_attentions[-1]
+        nl_cls_attention = nl_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+
+        # 获取对齐的 indices
+        alignment_code_indices = []
+        alignment_nl_indices = []
+
+        for n, m in lcs_pairs:
+            if isinstance(m, list):
+                for i in range(0, len(m), 2):
+                    alignment_code_indices.extend(range(m[i], m[i + 1] + 1))
+            else:
+                alignment_code_indices.append(m)
+            
+            if isinstance(n, list):
+                for i in range(0, len(n), 2):
+                    alignment_nl_indices.extend(range(n[i], n[i + 1] + 1))
+            else:
+                alignment_nl_indices.append(n)
+
+        # 去重处理并 +1
+        alignment_code_indices = list(set(alignment_code_indices))
+        alignment_nl_indices = list(set(alignment_nl_indices))
+        alignment_code_indices = [idx + 1 for idx in alignment_code_indices]
+        alignment_nl_indices = [idx + 1 for idx in alignment_nl_indices]
+
+        # 计算 attention loss
+        epsilon = 1e-8
+        # 直接使用 mask 对 positive 和 negative 的 attention 进行区分
+        code_mask = torch.zeros_like(code_cls_attention, dtype=torch.bool)
+        nl_mask = torch.zeros_like(nl_cls_attention, dtype=torch.bool)
+        
+        # 对于正样本位置，设置 mask
+        code_mask[alignment_code_indices] = 1
+        nl_mask[alignment_nl_indices] = 1
+
+        # 计算正样本和负样本的 attention loss
+        positive_code_attention = code_cls_attention[code_mask]
+        negative_code_attention = code_cls_attention[~code_mask]
+        positive_nl_attention = nl_cls_attention[nl_mask]
+        negative_nl_attention = nl_cls_attention[~nl_mask]
+
+        # 计算 attention loss
+        attention_loss = (torch.sum(-torch.log(positive_code_attention + epsilon)) +
+                          torch.sum(-torch.log(1.0 - negative_code_attention + epsilon)) +
+                          torch.sum(-torch.log(positive_nl_attention + epsilon)) +
+                          torch.sum(-torch.log(1.0 - negative_nl_attention + epsilon)))
+        attention_loss = attention_loss / (len(alignment_code_indices) + len(alignment_nl_indices))
+        # print("attention_loss",attention_loss)
+        # print("nl_cls_attention",nl_cls_attention)
+
+        return loss_align_code, attention_loss
+    
+    def batch_alignment(self, code_inputs, code_outputs, nl_outputs, local_index, sample_align, total_code_tokens):
+        
+        # align_outputs_1 = nl_outputs[0][local_index]
+        # align_outputs_2 = code_outputs[0][local_index]
+
+        # use the second last layer hidden states to align
+        align_outputs_1 = nl_outputs[2][-2][local_index]
+        align_outputs_2 = code_outputs[2][-2][local_index]
+
+        lcs_pairs = sample_align
+        loss_align_code = self.build_contrastive_pairs_effecient(align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens)
+        # print("loss_align_code",loss_align_code)
+        
+        # attention loss part
+        code_attentions = code_outputs[3]  # List of tensors, one for each layer
+        nl_attentions = nl_outputs[3]  # List of tensors, one for each layer
+
+        code_last_layer_attention = code_attentions[-1]
+        code_cls_attention = code_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+        
+        nl_last_layer_attention = nl_attentions[-1]
+        nl_cls_attention = nl_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+
+        alignment_code_indices_set = set()
+        alignment_nl_indices_set = set()
+
+        for n, m in lcs_pairs:
+            if isinstance(m, list):
+                alignment_code_indices_set.update(chain.from_iterable(range(m[i], m[i + 1] + 1) for i in range(0, len(m), 2)))
+            else:
+                alignment_code_indices_set.add(m)
+                
+            if isinstance(n, list):
+                alignment_nl_indices_set.update(chain.from_iterable(range(n[i], n[i + 1] + 1) for i in range(0, len(n), 2)))
+            else:
+                alignment_nl_indices_set.add(n)
+
+        # 转换为列表并 +1
+        alignment_code_indices = [idx + 1 for idx in alignment_code_indices_set]
+        alignment_nl_indices = [idx + 1 for idx in alignment_nl_indices_set]
+
+        # 计算 attention loss
+        epsilon = 1e-8
+        # 直接使用 mask 对 positive 和 negative 的 attention 进行区分
+        code_mask = torch.zeros_like(code_cls_attention, dtype=torch.bool)
+        nl_mask = torch.zeros_like(nl_cls_attention, dtype=torch.bool)
+        
+        # 对于正样本位置，设置 mask
+        code_mask[alignment_code_indices] = 1
+        nl_mask[alignment_nl_indices] = 1
+
+        # 计算正样本和负样本的 attention loss
+        positive_code_attention = code_cls_attention[code_mask]
+        negative_code_attention = code_cls_attention[~code_mask]
+        positive_nl_attention = nl_cls_attention[nl_mask]
+        negative_nl_attention = nl_cls_attention[~nl_mask]
+
+        # 计算 attention loss
+        attention_loss = (torch.sum(-torch.log(positive_code_attention + epsilon)) +
+                          torch.sum(-torch.log(1.0 - negative_code_attention + epsilon)) +
+                          torch.sum(-torch.log(positive_nl_attention + epsilon)) +
+                          torch.sum(-torch.log(1.0 - negative_nl_attention + epsilon)))
+        attention_loss = attention_loss / (len(alignment_code_indices) + len(alignment_nl_indices))
+        # print("attention_loss",attention_loss)
+        # print("nl_cls_attention",nl_cls_attention)
+
+        return loss_align_code, attention_loss
 
       
     def build_contrastive_pairs(self, align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens, num_negative=19):
@@ -537,7 +675,91 @@ class Model(nn.Module):
                     loss_align_code += nt_xent_loss
 
         return loss_align_code / num_pair
+    
+    def build_contrastive_pairs_effecient(self, align_outputs_1, align_outputs_2, lcs_pairs, total_code_tokens, num_negative=19):
+        loss_align_code = 0
+        num_pair = 0
+        temperature = 0.2
+        temperature_pos = 0.1
+        lambda_neg = 1.0
 
+        # 提前创建所有负样本的索引，避免每次循环内重复生成
+        all_indices = torch.arange(total_code_tokens, device=align_outputs_2.device)
+
+        for pair in lcs_pairs:
+            # 获取 comment 和 code 的 indices
+            comment_indices = []
+            for i in range(0, len(pair[0]), 2):
+                comment_indices.extend(range(pair[0][i] + 1, pair[0][i + 1] + 2))
+
+            code_indices = []
+            for i in range(0, len(pair[1]), 2):
+                code_indices.extend(range(pair[1][i] + 1, pair[1][i + 1] + 2))
+
+            # 构建负样本相似度（使用所有非 code_indices 的负样本）
+            negative_indices = set(all_indices) - set(code_indices)
+
+            for c_idx in comment_indices:
+                num_pair += 1
+                comment_embedding = align_outputs_1[c_idx + 1]
+
+                # 计算正样本相似度
+                pos_similarities = torch.stack([
+                    F.cosine_similarity(comment_embedding, align_outputs_2[code_idx + 1], dim=0).unsqueeze(0)
+                    for code_idx in code_indices
+                ])
+
+                # 计算负样本相似度
+                raw_neg_similarities = torch.stack([
+                    F.cosine_similarity(comment_embedding, align_outputs_2[neg_idx + 1], dim=0).unsqueeze(0)
+                    for neg_idx in negative_indices
+                ])
+                
+                # 负样本相似度裁剪到非负范围，然后映射到 [-1, 1]
+                neg_similarities = 2 * torch.clamp(raw_neg_similarities, min=0) - 1
+
+                # # 打印正样本和原始负样本相似度的平均值
+                # pos_sim_mean = pos_similarities.mean().item()
+                # neg_sim_mean = raw_neg_similarities.mean().item()
+                # # 计算并输出正样本和负样本的最小相似度
+                # pos_sim_min = pos_similarities.min().item()
+                # neg_sim_min = raw_neg_similarities.min().item()
+
+                # print(f"Positive similarity mean: {pos_sim_mean}, min: {pos_sim_min}, Negative similarity mean: {neg_sim_mean}, min: {neg_sim_min}")
+
+                # # 计算负样本相似度并截断
+                # neg_similarities = torch.stack([
+                #     F.cosine_similarity(comment_embedding, align_outputs_2[neg_idx + 1], dim=0).clamp(min=0).unsqueeze(0)
+                #     for neg_idx in negative_indices
+                # ])
+
+                # 对比损失（正负样本部分）
+                pos_exp_sim = torch.exp(pos_similarities / temperature_pos)
+                neg_exp_sim = torch.exp(neg_similarities / temperature)
+
+                # # 合并正负样本的相似度
+                # similarities = torch.cat([pos_similarities, neg_similarities]) / temperature
+                # exp_similarities = torch.exp(similarities)
+
+                # 正样本的相似度之和
+                pos_similarity_sum = pos_exp_sim.sum()
+                # 负样本的相似度之和
+                neg_similarity_sum = neg_exp_sim.sum()
+
+                # 计算对比损失
+                nt_xent_loss = -torch.log(pos_similarity_sum / (pos_similarity_sum + neg_similarity_sum))
+
+                # 负样本惩罚项
+                neg_loss = torch.mean(torch.clamp(-raw_neg_similarities, min=0))
+
+                # 总体损失
+                total_loss = nt_xent_loss + nt_xent_loss * neg_loss
+                loss_align_code += total_loss
+                # print(f"nt_xent_loss: {nt_xent_loss:.4f}, neg_loss: {neg_loss:.4f}")
+                # loss_align_code += nt_xent_loss
+
+        return loss_align_code / num_pair
+    
     def contrastive_loss(self, similarities, labels, temperature=0.07):
         # 对比学习损失的实现
         similarities = similarities / temperature
@@ -548,4 +770,127 @@ class Model(nn.Module):
             total_loss += loss
         loss = total_loss / similarities.size(0)
         return loss
- 
+
+    def mask_tokens(self, inputs, tokenizer, mlm_probability=0.15):
+        """
+        Prepare masked tokens inputs for MLM, only masking specific indices if provided.
+        """
+        labels = inputs.clone()
+        probability_matrix = torch.full(labels.shape, mlm_probability)
+        masked_indices = torch.bernoulli(probability_matrix).bool()
+
+        # Ensure that at least one token is masked
+        if masked_indices.sum() == 0:
+            # If no tokens are masked, forcefully mask one token (e.g., the first one)
+            masked_indices[0] = True
+        
+        labels[~masked_indices] = -100  # We only compute loss on masked tokens
+        
+        # Replace the masked input tokens with the tokenizer.mask_token_id
+        inputs[masked_indices] = tokenizer.mask_token_id
+        
+        return inputs, labels
+
+    def compute_mlm_loss_nl(self, model, inputs, labels, origin_output):
+        """
+        Compute MLM loss for the given inputs and labels.
+        """
+        outputs = model(nl_inputs=inputs)
+        # 使用最后一层隐状态
+        last_hidden_state = outputs[0][0]
+
+        # 使用 labels 作为原始向量的目标
+        masked_indices = (labels != -100).nonzero(as_tuple=True)
+        original_vectors = origin_output[masked_indices]
+        masked_vectors = last_hidden_state[masked_indices]
+
+        # 计算均方误差损失（MSE Loss）
+        mlm_loss = F.mse_loss(masked_vectors, original_vectors)
+        
+        return mlm_loss
+
+    def compute_mlm_loss_code(self, model, inputs, labels, origin_output, attn_mask, position_idx):
+        """
+        Compute MLM loss for code inputs and labels.
+        """
+        outputs = model(code_inputs=inputs,attn_mask=attn_mask,position_idx=position_idx)
+        # 使用最后一层隐状态
+        last_hidden_state = outputs[0][0]
+
+        # 使用 labels 作为原始向量的目标
+        masked_indices = (labels != -100).nonzero(as_tuple=True)
+        original_vectors = origin_output[masked_indices]
+        masked_vectors = last_hidden_state[masked_indices]
+
+        # 计算均方误差损失（MSE Loss）
+        mlm_loss = F.mse_loss(masked_vectors, original_vectors)
+        
+        return mlm_loss
+
+    def batch_alignment_mlm(self, code_inputs, nl_inputs, code_outputs, nl_outputs, local_index, sample_align, total_code_tokens, tokenizer, attn_mask, position_idx, model):
+        # 获取 positive pair 的索引
+        alignment_code_indices_set = set()
+        alignment_nl_indices_set = set()
+
+        for n, m in sample_align:
+            if isinstance(m, list):
+                alignment_code_indices_set.update(chain.from_iterable(range(m[i], m[i + 1] + 1) for i in range(0, len(m), 2)))
+            else:
+                alignment_code_indices_set.add(m)
+                
+            if isinstance(n, list):
+                alignment_nl_indices_set.update(chain.from_iterable(range(n[i], n[i + 1] + 1) for i in range(0, len(n), 2)))
+            else:
+                alignment_nl_indices_set.add(n)
+
+        # 转换为列表并 +1
+        alignment_code_indices = [idx + 1 for idx in alignment_code_indices_set]
+        alignment_nl_indices = [idx + 1 for idx in alignment_nl_indices_set]
+
+        align_outputs_1 = nl_outputs[0][local_index]
+        align_outputs_2 = code_outputs[0][local_index]
+
+        # 对注释和代码进行 mask 操作，仅对 positive pair 的 token 进行 mask
+        masked_nl_inputs, nl_labels = self.mask_tokens(nl_inputs[local_index][alignment_nl_indices], tokenizer)
+        masked_code_inputs, code_labels = self.mask_tokens(code_inputs[local_index][alignment_code_indices], tokenizer)
+
+        # 计算 mlm loss
+        mlm_loss_nl = self.compute_mlm_loss_nl(model, masked_nl_inputs.unsqueeze(0), nl_labels, align_outputs_1[alignment_nl_indices])
+        mlm_loss_code = self.compute_mlm_loss_code(model, masked_code_inputs.unsqueeze(0), code_labels, align_outputs_2[alignment_code_indices], attn_mask[alignment_code_indices, :][:, alignment_code_indices].unsqueeze(0), position_idx[alignment_code_indices].unsqueeze(0))
+
+        # 继续执行对齐损失和注意力损失计算
+        loss_align_code = self.build_contrastive_pairs_effecient(align_outputs_1, align_outputs_2, sample_align, total_code_tokens)
+
+        # attention loss part
+        code_attentions = code_outputs[2]  # List of tensors, one for each layer
+        nl_attentions = nl_outputs[2]  # List of tensors, one for each layer
+
+        code_last_layer_attention = code_attentions[-1]
+        code_cls_attention = code_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+        
+        nl_last_layer_attention = nl_attentions[-1]
+        nl_cls_attention = nl_last_layer_attention[local_index, :, 0, :].mean(dim=0)
+
+        # 计算 attention loss
+        epsilon = 1e-8
+        code_mask = torch.zeros_like(code_cls_attention, dtype=torch.bool)
+        nl_mask = torch.zeros_like(nl_cls_attention, dtype=torch.bool)
+        
+        code_mask[alignment_code_indices] = 1
+        nl_mask[alignment_nl_indices] = 1
+
+        positive_code_attention = code_cls_attention[code_mask]
+        negative_code_attention = code_cls_attention[~code_mask]
+        positive_nl_attention = nl_cls_attention[nl_mask]
+        negative_nl_attention = nl_cls_attention[~nl_mask]
+
+        attention_loss = (torch.sum(-torch.log(positive_code_attention + epsilon)) +
+                        torch.sum(-torch.log(1.0 - negative_code_attention + epsilon)) +
+                        torch.sum(-torch.log(positive_nl_attention + epsilon)) +
+                        torch.sum(-torch.log(1.0 - negative_nl_attention + epsilon)))
+        attention_loss = attention_loss / (len(alignment_code_indices) + len(alignment_nl_indices))
+
+        mlm_loss = (mlm_loss_nl + mlm_loss_code) / 2
+
+        return loss_align_code, attention_loss, mlm_loss
+

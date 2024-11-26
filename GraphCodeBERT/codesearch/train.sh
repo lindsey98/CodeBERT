@@ -11,11 +11,11 @@ CUDA_VISIBLE_DEVICES=3 python run.py \
 --eval_data_file=dataset/$lang/valid.jsonl \
 --test_data_file=dataset/$lang/test.jsonl \
 --codebase_file=dataset/$lang/codebase.jsonl \
---num_train_epochs 51 \
+--num_train_epochs 11 \
 --code_length 256 \
 --data_flow_length 64 \
 --nl_length 128 \
---train_batch_size 16 \
+--train_batch_size 32 \
 --eval_batch_size 64 \
 --learning_rate 2e-4 \
 --seed 123456 \
