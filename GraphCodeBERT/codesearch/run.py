@@ -548,6 +548,123 @@ def save_attention_features(args, model, tokenizer,pool):
     # eval_loss_path = os.path.join(output_dir, 'new_train_loss.npy')
     # np.save(eval_loss_path, eval_loss)
 
+def save_train_features(args, model, tokenizer,pool):
+    """ Train the model """
+    #get training dataset
+    train_dataset=TextDataset(tokenizer, args, args.train_data_file, pool)
+    train_sampler = SequentialSampler(train_dataset)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
+    
+    # multi-gpu training (should be after apex fp16 initialization)
+    if args.n_gpu > 1:
+        model = torch.nn.DataParallel(model)
+
+    # Train!
+    logger.info("***** Running training *****")
+    logger.info("  Num examples = %d", len(train_dataset))
+    logger.info("  Num Epochs = %d", args.num_train_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size//args.n_gpu)
+    logger.info("  Total train batch size  = %d", args.train_batch_size)
+    logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
+    
+    model.eval()
+    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(11))
+    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_auto_label_possim_mlm.pth')
+
+    model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
+    model.to(args.device)
+    nl_token = []
+    nl_tokens = []
+    all_nl_cls_attention = []
+    code_token = []
+    code_tokens = []
+    all_code_cls_attention = []
+    tokenized_id = []
+
+    for step,batch in enumerate(train_dataloader):
+        if step < 300:
+            nl_inputs = batch[3].to(args.device)
+            nl_outputs = model(nl_inputs=nl_inputs)
+
+            code_inputs = batch[0].to(args.device)  
+            attn_mask = batch[1].to(args.device)
+            position_idx = batch[2].to(args.device)
+            code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+
+            # # get nl vectors
+            # nl_last_hidden_state = nl_outputs[0]
+            # nl_tokens.append(nl_last_hidden_state.cpu().detach().numpy())
+
+            # nl_vec = nl_outputs[1]
+
+            # # 获取注意力权重
+            # nl_attentions = nl_outputs[2]  # List of tensors, one for each layer
+            # nl_last_layer_attention = nl_attentions[-1]
+            # nl_cls_attention = nl_last_layer_attention[:, :, 0, :].mean(dim=1)
+
+            # all_nl_cls_attention.append(nl_cls_attention.cpu().detach().numpy())
+
+            # nl_token.append(nl_vec.cpu().detach().numpy())
+
+            # get code vectors
+            code_last_hidden_state = code_outputs[0]
+            code_tokens.append(code_last_hidden_state.cpu().detach().numpy())
+
+            code_vec = code_outputs[1]
+
+            # 获取注意力权重
+            code_attentions = code_outputs[2]  # List of tensors, one for each layer
+            code_last_layer_attention = code_attentions[-1]
+            code_cls_attention = code_last_layer_attention[:, :, 0, :].mean(dim=1)
+
+            all_code_cls_attention.append(code_cls_attention.cpu().detach().numpy())
+
+            code_token.append(code_vec.cpu().detach().numpy())
+
+            # # save code tokenize result
+            # ori2cur_pos = batch[4].to(args.device)
+            # # 使用 extend 将整个 ori2cur_pos 列表的内容添加到 tokenized_id
+            # tokenized_id.extend(ori2cur_pos.tolist())
+
+    # nl_token = np.concatenate(nl_token, 0)
+    # nl_tokens = np.concatenate(nl_tokens, 0)
+    # all_nl_cls_attention = np.concatenate(all_nl_cls_attention, 0)
+
+    output_dir = "/home/yiming/cophi/training_dynamic/features/aa_possim"
+    
+    # print(nl_token.shape)
+    # nl_token_output_path = os.path.join(output_dir, 'train_nl_cls_token_aa.npy')
+    # np.save(nl_token_output_path, nl_token)
+
+    # ## cls accumulative attention
+    # print(all_nl_cls_attention.shape)
+    # nl_attention_output_path = os.path.join(output_dir, 'train_nl_attention_aa.npy')
+    # np.save(nl_attention_output_path, all_nl_cls_attention)
+
+    # print(nl_tokens.shape)
+    # nl_tokens_output_path = os.path.join(output_dir, 'train_nl_tokens_aa.npy')
+    # np.save(nl_tokens_output_path, nl_tokens)
+
+    # with open('/home/yiming/cophi/training_dynamic/features/tokenized_id_train.json', 'w') as f:
+    #     json.dump(tokenized_id, f)
+
+    code_token = np.concatenate(code_token, 0)
+    code_tokens = np.concatenate(code_tokens, 0)
+    all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
+    
+    print(code_token.shape)
+    code_token_output_path = os.path.join(output_dir, 'train_code_cls_token_aa.npy')
+    np.save(code_token_output_path, code_token)
+
+    print(all_code_cls_attention.shape)
+    code_attention_output_path = os.path.join(output_dir, 'train_code_attention_aa.npy')
+    np.save(code_attention_output_path, all_code_cls_attention)
+
+    print(code_tokens.shape)
+    code_token_output_path = os.path.join(output_dir, 'train_code_tokens_aa.npy')
+    np.save(code_token_output_path, code_tokens)
+
+
 def save_valid_attention_features(args, model, tokenizer,pool):
     """ Train the model """
     #get training dataset
@@ -568,8 +685,8 @@ def save_valid_attention_features(args, model, tokenizer,pool):
     logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
     
     model.eval()
-    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(51))
-    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_batch_retrieval.pth')
+    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(11))
+    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_auto_label.pth')
 
     model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
     model.to(args.device)
@@ -599,19 +716,19 @@ def save_valid_attention_features(args, model, tokenizer,pool):
     nl_tokens = np.concatenate(nl_tokens, 0)
     all_nl_cls_attention = np.concatenate(all_nl_cls_attention, 0)
 
-    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    output_dir = "/home/yiming/cophi/training_dynamic/features/retri"
     
     print(nl_token.shape)
-    nl_token_output_path = os.path.join(output_dir, 'new_valid_nl_cls_token_new_batch_retrieval.npy')
+    nl_token_output_path = os.path.join(output_dir, 'valid_nl_cls_token_new_align_attention_batch_retrieval.npy')
     np.save(nl_token_output_path, nl_token)
 
     ### cls accumulative attention
     print(all_nl_cls_attention.shape)
-    nl_attention_output_path = os.path.join(output_dir, 'new_valid_nl_attention_new_batch_retrieval.npy')
+    nl_attention_output_path = os.path.join(output_dir, 'valid_nl_attention_new_align_attention_batch_retrieval.npy')
     np.save(nl_attention_output_path, all_nl_cls_attention)
 
     print(nl_tokens.shape)
-    nl_tokens_output_path = os.path.join(output_dir, 'new_valid_nl_tokens_new_batch_retrieval.npy')
+    nl_tokens_output_path = os.path.join(output_dir, 'valid_nl_tokens_new_align_attention_batch_retrieval.npy')
     np.save(nl_tokens_output_path, nl_tokens)
 
 def save_valid_code_attention_features(args, model, tokenizer,pool):
@@ -635,8 +752,8 @@ def save_valid_code_attention_features(args, model, tokenizer,pool):
     logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
     
     model.train()
-    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(51))
-    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_batch_retrieval.pth')
+    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(11))
+    ckpt_output_path = os.path.join(output_dir, 'subject_model_retri.pth')
 
     model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
     model.to(args.device)
@@ -647,7 +764,7 @@ def save_valid_code_attention_features(args, model, tokenizer,pool):
     tokenized_id = []
 
     # set code index here to store the corresponding token feature
-    sample_index = 6625
+    sample_index = 40329
 
     # # for first run, we store all cls tokens and attention features
     # for step,batch in enumerate(train_dataloader):
@@ -677,19 +794,19 @@ def save_valid_code_attention_features(args, model, tokenizer,pool):
     # code_token = np.concatenate(code_token, 0)
     # all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
 
-    # output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    # output_dir = "/home/yiming/cophi/training_dynamic/features/retri"
 
     # print(code_token.shape)
-    # code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_batch_retrieval.npy')
+    # code_token_output_path = os.path.join(output_dir, 'valid_code_cls_token_retrieval.npy')
     # np.save(code_token_output_path, code_token)
 
     # ### cls accumulative attention
     # print(all_code_cls_attention.shape)
-    # code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_batch_retrieval.npy')
+    # code_attention_output_path = os.path.join(output_dir, 'valid_code_attention_retrieval.npy')
     # np.save(code_attention_output_path, all_code_cls_attention)
 
     # print(len(code_tokens_strs))
-    # with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
+    # with open('/home/yiming/cophi/training_dynamic/features/valid_tokenized_code_tokens.json', 'w') as f:
     #     json.dump(code_tokens_strs, f)
 
     # for observation, we store certain code tokens and tokenized ids
@@ -711,10 +828,10 @@ def save_valid_code_attention_features(args, model, tokenizer,pool):
 
     code_tokens = np.concatenate(code_tokens, 0)
 
-    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    output_dir = "/home/yiming/cophi/training_dynamic/features/retri"
 
     print(code_tokens.shape)
-    code_token_output_path = os.path.join(output_dir, 'new_valid_code_tokens_new_batch_retrieval.npy')
+    code_token_output_path = os.path.join(output_dir, 'valid_code_tokens_retrieval.npy')
     np.save(code_token_output_path, code_tokens)
 
     with open('/home/yiming/cophi/training_dynamic/graphcodebert/Epoch_1/tokenized_id_valid.json', 'w') as f:
@@ -741,8 +858,8 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
     logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
     
     model.train()
-    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(51))
-    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_align_attention_batch_retrieval.pth')
+    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(11))
+    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_auto_label.pth')
 
     model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
     model.to(args.device)
@@ -752,7 +869,7 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
     code_tokens_strs = []
     tokenized_id = []
     # set code index here to store the corresponding token feature
-    sample_index = 6625
+    sample_index = 40329
     # # for first run, we store all cls tokens and attention features
     # for step,batch in enumerate(train_dataloader):
     #     code_inputs = batch[0].to(args.device)  
@@ -760,11 +877,11 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
     #     position_idx = batch[2].to(args.device)
     #     code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
 
-    #     for code_input in code_inputs:
-    #         # code_input 是一个包含多个 token IDs 的列表
-    #         code_token_ids = code_input.tolist()
-    #         code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
-    #         code_tokens_strs.append(code_tokens_str)
+    #     # for code_input in code_inputs:
+    #     #     # code_input 是一个包含多个 token IDs 的列表
+    #     #     code_token_ids = code_input.tolist()
+    #     #     code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
+    #     #     code_tokens_strs.append(code_tokens_str)
 
     #     # get code and nl vectors
     #     code_vec = code_outputs[1]
@@ -781,20 +898,16 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
     # code_token = np.concatenate(code_token, 0)
     # all_code_cls_attention = np.concatenate(all_code_cls_attention, 0)
 
-    # output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    # output_dir = "/home/yiming/cophi/training_dynamic/features/aa"
 
     # print(code_token.shape)
-    # code_token_output_path = os.path.join(output_dir, 'new_valid_code_cls_token_new_align_attention_batch_retrieval.npy')
+    # code_token_output_path = os.path.join(output_dir, 'valid_code_cls_token_new_align_attention_batch_retrieval.npy')
     # np.save(code_token_output_path, code_token)
 
     # ### cls accumulative attention
     # print(all_code_cls_attention.shape)
-    # code_attention_output_path = os.path.join(output_dir, 'new_valid_code_attention_new_align_attention_batch_retrieval.npy')
+    # code_attention_output_path = os.path.join(output_dir, 'valid_code_attention_new_align_attention_batch_retrieval.npy')
     # np.save(code_attention_output_path, all_code_cls_attention)
-
-    # print(len(code_tokens_strs))
-    # with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/valid_tokenized_code_tokens.json', 'w') as f:
-    #     json.dump(code_tokens_strs, f)
 
     # for observation, we store certain code tokens and tokenized ids
     for step,batch in enumerate(train_dataloader):
@@ -815,10 +928,10 @@ def save_valid_code_attention_features_aa(args, model, tokenizer,pool):
 
     code_tokens = np.concatenate(code_tokens, 0)
 
-    output_dir = "/home/yiming/cophi/training_dynamic/gcb_tokens_temp"
+    output_dir = "/home/yiming/cophi/training_dynamic/features/aa"
 
     print(code_tokens.shape)
-    code_token_output_path = os.path.join(output_dir, 'new_valid_code_tokens_new_align_attention_batch_retrieval.npy')
+    code_token_output_path = os.path.join(output_dir, 'valid_code_tokens_new_align_attention_batch_retrieval.npy')
     np.save(code_token_output_path, code_tokens)
 
     with open('/home/yiming/cophi/training_dynamic/graphcodebert/Epoch_1/tokenized_id_valid.json', 'w') as f:
@@ -1176,7 +1289,7 @@ def train_alignment_sample(args, model, tokenizer,pool):
     #get optimizer and scheduler
     optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=1e-8)
     # optimizer = SGD(model.parameters(), lr=args.learning_rate, momentum=0.9, weight_decay=1e-4)
-    # scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=10,num_training_steps=100*args.num_train_epochs)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0,num_training_steps=len(train_dataloader)*args.num_train_epochs)
     # scheduler = ExponentialLR(optimizer, gamma=0.99)
     scheduler = LambdaLR(optimizer, lr_lambda=lambda_lr)
     
@@ -1397,7 +1510,7 @@ def train_alignment_sample(args, model, tokenizer,pool):
 
                     # if common_token_loss > 0:
                     #     aa_loss = aa_loss + common_token_loss
-                    # aa_loss = align_loss + attention_loss + retrieval_loss
+                    aa_loss = align_loss + attention_loss + retrieval_loss
                     
                     # 确保 align_loss 和 noisy_attention_loss 是张量
                     if isinstance(align_loss, torch.Tensor):
@@ -1424,7 +1537,7 @@ def train_alignment_sample(args, model, tokenizer,pool):
 
                     #backward
                     # align_loss.backward()
-                    retrieval_loss.backward()
+                    aa_loss.backward()
                     # torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
                     # optimizer.step()
                     # optimizer.zero_grad()
@@ -1484,22 +1597,205 @@ def train_alignment_sample(args, model, tokenizer,pool):
         #         torch.save(model_to_save.state_dict(), output_dir)
         #         logger.info("Saving model checkpoint to %s", output_dir)
 
-    output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(idx + 1))
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-    model_to_save = model.module if hasattr(model, 'module') else model
-    ckpt_output_path = os.path.join(output_dir, 'subject_model_new_batch_retrieval.pth')
-    logger.info("Saving model checkpoint to %s", ckpt_output_path)
-    torch.save(model_to_save.state_dict(), ckpt_output_path)
+        output_dir = os.path.join("/home/yiming/cophi/training_dynamic/gcb_tokens/Model", 'Epoch_{}'.format(idx + 1))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        model_to_save = model.module if hasattr(model, 'module') else model
+        ckpt_output_path = os.path.join(output_dir, 'subject_model_aa.pth')
+        # ckpt_output_path = os.path.join(output_dir, 'subject_model_retrieval.pth')
+        logger.info("Saving model checkpoint to %s", ckpt_output_path)
+        torch.save(model_to_save.state_dict(), ckpt_output_path)
 
-    # 保存列表到文件
-    with open('/home/yiming/cophi/training_dynamic/graphcodebert/Epoch_1/align_loss_list.json', 'w') as f:
-        json.dump(align_loss_list, f)
+    # # 保存列表到文件
+    # with open('/home/yiming/cophi/training_dynamic/graphcodebert/Epoch_1/align_loss_list.json', 'w') as f:
+    #     json.dump(align_loss_list, f)
 
     # with open('/home/yiming/cophi/training_dynamic/graphcodebert/Epoch_1/noisy_attention_loss_list.json', 'w') as f:
     #     json.dump(noisy_attention_loss_list, f)
 
     print("Loss values saved.")
+
+def train_alignment_auto_samples(args, model, tokenizer,pool):
+    """ Train the model """
+    #get training dataset
+    train_dataset=TextDataset(tokenizer, args, args.train_data_file, pool)
+    train_sampler = SequentialSampler(train_dataset)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
+    
+    #get optimizer and scheduler
+    optimizer = AdamW(model.parameters(), lr=args.learning_rate, eps=1e-8)
+    # scheduler = LambdaLR(optimizer, lr_lambda=lambda_lr)
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0,num_training_steps=len(train_dataloader)*args.num_train_epochs)
+    
+    # multi-gpu training (should be after apex fp16 initialization)
+    if args.n_gpu > 1:
+        model = torch.nn.DataParallel(model)
+
+    # Train!
+    logger.info("***** Running training *****")
+    logger.info("  Num examples = %d", len(train_dataset))
+    logger.info("  Num Epochs = %d", args.num_train_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size//args.n_gpu)
+    logger.info("  Total train batch size  = %d", args.train_batch_size)
+    logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
+    
+    model.zero_grad()
+
+    input_path = "/home/yiming/cophi/projects/fork/CodeBERT/GraphCodeBERT/codesearch/sorted_label_human_auto.jsonl"
+    idx_list = []
+    match_list = []
+
+    with open(input_path, 'r', encoding='utf-8') as file:
+        for line in file:
+            line = line.strip().rstrip(',')  # 去除行末的逗号
+            json_obj = json.loads(line)
+            idx_list.append(json_obj['idx'])
+            match_list.append(json_obj['match'])
+    
+    sample_index = idx_list
+    sample_align = match_list
+
+    model.train()
+
+    accumulation_steps = 32  # Number of batches to accumulate gradients before updating
+    optimizer.zero_grad()  # Reset gradients before starting
+
+    for idx in range(args.num_train_epochs):
+        # 初始指针位置为0
+        sample_idx_ptr = 0
+        total_epoch_align_loss = 0
+        total_epoch_attention_loss = 0
+        total_epoch_retrieval_loss = 0
+        # total_epoch_mlm_loss = 0
+        total_batches_with_align_loss = 0
+        total_batches = 0
+        # if idx == 0:
+        #     output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(idx+1))
+        #     ckpt_output_path = os.path.join(output_dir, 'subject_model.pth')
+        #     model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
+        #     model.to(args.device)
+        for step,batch in enumerate(train_dataloader):
+            total_batches += 1
+            #get inputs
+            code_inputs = batch[0].to(args.device)  
+            attn_mask = batch[1].to(args.device)
+            position_idx = batch[2].to(args.device)
+            nl_inputs = batch[3].to(args.device)
+            ori2cur_pos = batch[4].to(args.device)
+            
+            code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+            nl_outputs = model(nl_inputs=nl_inputs)
+            
+            batch_start_idx = step * args.train_batch_size
+            batch_end_idx = batch_start_idx + args.train_batch_size
+
+            bs = code_inputs.shape[0]
+            code_vec = code_outputs[1]
+            nl_vec = nl_outputs[1]
+
+            scores=torch.einsum("ab,cb->ac",nl_vec,code_vec)
+            loss_fct = CrossEntropyLoss()
+            retrieval_loss = loss_fct(scores, torch.arange(code_inputs.size(0), device=scores.device))
+            total_epoch_retrieval_loss += retrieval_loss.item()
+
+            # 初始化 align_loss 和 attention_loss 累加变量
+            total_align_loss = 0
+            total_attention_loss = 0
+            # total_mlm_loss = 0
+            align_loss_count = 0  # 记录 align_loss 的数量
+
+            # 从当前指针位置开始检查 sample_index 是否在当前 batch 内
+            while sample_idx_ptr < len(sample_index) and sample_index[sample_idx_ptr] < batch_end_idx:
+                if sample_index[sample_idx_ptr] >= batch_start_idx:
+                    # 计算在当前 batch 范围内的 align_loss 和 attention_loss
+                    local_index = sample_index[sample_idx_ptr] - batch_start_idx
+                    total_code_tokens = min(ori2cur_pos[local_index].max().item(), 255)
+
+                    if isinstance(model, torch.nn.DataParallel):
+                        align_loss, attention_loss = model.module.batch_alignment(
+                            code_inputs, code_outputs, nl_outputs, local_index, sample_align[sample_idx_ptr], total_code_tokens
+                        )
+                    else:
+                        align_loss, attention_loss = model.batch_alignment(
+                            code_inputs, code_outputs, nl_outputs, local_index, sample_align[sample_idx_ptr], total_code_tokens
+                        )
+                    
+                    # # add mlm loss
+                    # if isinstance(model, torch.nn.DataParallel):
+                    #     align_loss, attention_loss, mlm_loss = model.module.batch_alignment_mlm(
+                    #         code_inputs, code_outputs, nl_outputs, local_index, sample_align[sample_idx_ptr], total_code_tokens, tokenizer, attn_mask[local_index], position_idx[local_index], model
+                    #     )
+                    # else:
+                    #     align_loss, attention_loss, mlm_loss = model.batch_alignment_mlm(
+                    #         code_inputs, nl_inputs, code_outputs, nl_outputs, local_index, sample_align[sample_idx_ptr], total_code_tokens, tokenizer, attn_mask[local_index], position_idx[local_index], model
+                    #     )
+
+                    total_align_loss += align_loss
+                    total_attention_loss += attention_loss
+                    # total_mlm_loss += mlm_loss
+                    align_loss_count += 1
+
+                sample_idx_ptr += 1  # 移动指针到下一个 sample_index
+
+            # 如果当前 batch 有 align_loss 和 attention_loss，则加上 retrieval_loss 进行反向传播
+            if align_loss_count > 0:
+                aa_loss = total_align_loss + total_attention_loss + retrieval_loss
+                # aa_loss = total_align_loss + total_attention_loss + retrieval_loss + total_mlm_loss
+                aa_loss.backward()
+                # retrieval_loss.backward()
+                total_epoch_align_loss += total_align_loss.item()
+                total_epoch_attention_loss += total_attention_loss.item()
+                # total_epoch_mlm_loss += total_mlm_loss.item()
+                total_batches_with_align_loss += 1
+                logger.info(
+                    "epoch {} step {} accumulated align loss {} attention loss {} retrieval loss {}".format(
+                        idx, step + 1,
+                        round(total_align_loss.item(), 5),
+                        round(total_attention_loss.item(), 5),
+                        round(retrieval_loss.item(), 5)
+                        # round(total_mlm_loss.item(), 5)
+                    )
+                )
+            else:
+                # 只有 retrieval_loss 的情况
+                retrieval_loss.backward()
+                logger.info(
+                    "epoch {} step {} retrieval loss only {}".format(
+                        idx, step + 1,
+                        round(retrieval_loss.item(), 5)
+                    )
+                )
+       
+            # Update model parameters and zero gradients every accumulation_steps
+            if (step + 1) % accumulation_steps == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+                optimizer.step()
+                optimizer.zero_grad()
+                scheduler.step()
+        # Calculate average losses for the epoch
+        avg_align_loss = total_epoch_align_loss / total_batches_with_align_loss if total_batches_with_align_loss > 0 else 0
+        avg_attention_loss = total_epoch_attention_loss / total_batches_with_align_loss if total_batches_with_align_loss > 0 else 0
+        # avg_mlm_loss = total_epoch_mlm_loss / total_batches_with_align_loss if total_batches_with_align_loss > 0 else 0
+        avg_retrieval_loss = total_epoch_retrieval_loss / total_batches
+
+        logger.info("Epoch {} average losses - Align Loss: {:.5f}, Attention Loss: {:.5f}, Retrieval Loss: {:.5f}".format(
+            idx + 1, avg_align_loss, avg_attention_loss, avg_retrieval_loss
+        ))
+
+        #evaluate    
+        results = evaluate(args, model, tokenizer,args.eval_data_file, pool, eval_when_training=True)
+        for key, value in results.items():
+            logger.info("  %s = %s", key, round(value,4))    
+
+        output_dir = os.path.join(args.output_dir, 'Epoch_{}'.format(idx + 1))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        model_to_save = model.module if hasattr(model, 'module') else model
+        ckpt_output_path = os.path.join(output_dir, 'subject_model_new_auto_label_aa.pth')
+        logger.info("Saving model checkpoint to %s", ckpt_output_path)
+        torch.save(model_to_save.state_dict(), ckpt_output_path)
+
+        print("Model saved.")
 
 def save_tokenized_strs(args, model, tokenizer,pool):
     """ Train the model """
@@ -1546,6 +1842,149 @@ def save_tokenized_strs(args, model, tokenizer,pool):
     
     with open('/home/yiming/cophi/training_dynamic/gcb_tokens_temp/Model/Epoch_1/tokenized_comment_tokens_train.json', 'w') as f:
         json.dump(nl_tokens_strs, f)
+
+def save_multi_valid_comment_tokens_embedding(args, model, tokenizer,pool):
+    """ Train the model """
+    #get training dataset
+    train_dataset=TextDataset(tokenizer, args, args.eval_data_file, pool)
+    train_sampler = SequentialSampler(train_dataset)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
+    
+    # multi-gpu training (should be after apex fp16 initialization)
+    if args.n_gpu > 1:
+        model = torch.nn.DataParallel(model)
+
+    # Train!
+    logger.info("***** Running training *****")
+    logger.info("  Num examples = %d", len(train_dataset))
+    logger.info("  Num Epochs = %d", args.num_train_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size//args.n_gpu)
+    logger.info("  Total train batch size  = %d", args.train_batch_size)
+    logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
+    
+    model.eval()
+    sample_index = 5783
+    nl_tokens_strs = []
+    # # for first run, we store all cls tokens and attention features
+    for step,batch in enumerate(train_dataloader):
+        nl_inputs = batch[3].to(args.device)
+
+        for nl_input in nl_inputs:
+            nl_token_ids = nl_input.tolist()
+            nl_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in nl_token_ids]
+            nl_tokens_strs.append(nl_tokens_str)
+
+    print(len(nl_tokens_strs))
+
+    with open('/home/yiming/cophi/training_dynamic/temp_featrues/valid_tokenized_nl_tokens.json', 'w') as f:
+        json.dump(nl_tokens_strs, f)
+
+    for iter in range(30):
+        output_dir = os.path.join("/home/yiming/cophi/training_dynamic/gcb_tokens/Model", 'Epoch_{}'.format(iter+1))
+        ckpt_output_path = os.path.join(output_dir, 'subject_model_new_batch_retrieval.pth')
+
+        model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
+        model.to(args.device)
+        nl_tokens = []
+
+        for step,batch in enumerate(train_dataloader):
+            batch_start_idx = step * args.train_batch_size
+            batch_end_idx = batch_start_idx + args.train_batch_size
+            if batch_start_idx <= sample_index < batch_end_idx:
+                nl_inputs = batch[3].to(args.device)
+                nl_outputs = model(nl_inputs=nl_inputs)
+                nl_last_hidden_state = nl_outputs[0]
+                local_index = sample_index - batch_start_idx
+                nl_tokens.append(nl_last_hidden_state[local_index].unsqueeze(0).cpu().detach().numpy())
+            
+        nl_tokens = np.concatenate(nl_tokens, 0)
+
+        output_dir = os.path.join("/home/yiming/cophi/training_dynamic/temp_featrues", 'Epoch_{}'.format(iter+1))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)   
+        
+        print(nl_tokens.shape)
+        nl_tokens_output_path = os.path.join(output_dir, 'new_valid_nl_tokens_new_batch_retrieval.npy')
+        np.save(nl_tokens_output_path, nl_tokens)
+
+def save_multi_valid_code_tokens_embedding(args, model, tokenizer,pool):
+    torch.cuda.empty_cache()
+    """ Train the model """
+    #get training dataset
+    train_dataset=TextDataset(tokenizer, args, args.codebase_file, pool)
+    train_sampler = SequentialSampler(train_dataset)
+    train_dataloader = DataLoader(train_dataset, sampler=train_sampler, batch_size=args.train_batch_size,num_workers=4)
+    
+    # multi-gpu training (should be after apex fp16 initialization)
+    if args.n_gpu > 1:
+        model = torch.nn.DataParallel(model)
+
+    # Train!
+    logger.info("***** Running training *****")
+    logger.info("  Num examples = %d", len(train_dataset))
+    logger.info("  Num Epochs = %d", args.num_train_epochs)
+    logger.info("  Instantaneous batch size per GPU = %d", args.train_batch_size//args.n_gpu)
+    logger.info("  Total train batch size  = %d", args.train_batch_size)
+    logger.info("  Total optimization steps = %d", len(train_dataloader)*args.num_train_epochs)
+    
+    model.eval()
+
+    
+    code_tokens_strs = []
+    # set code index here to store the corresponding token feature
+    sample_index = 30273
+
+    # # for first run, we store all cls tokens and attention features
+    for step,batch in enumerate(train_dataloader):
+        code_inputs = batch[0].to(args.device)  
+
+        for code_input in code_inputs:
+            # code_input 是一个包含多个 token IDs 的列表
+            code_token_ids = code_input.tolist()
+            code_tokens_str = [tokenizer.convert_ids_to_tokens(token_id) for token_id in code_token_ids]
+            code_tokens_strs.append(code_tokens_str)
+
+    print(len(code_tokens_strs))
+    with open('/home/yiming/cophi/training_dynamic/temp_featrues/valid_tokenized_code_tokens.json', 'w') as f:
+        json.dump(code_tokens_strs, f)
+
+    # for observation, we store certain code tokens and tokenized ids
+    for iter in range(30):
+        tokenized_id = []
+        code_tokens = []
+        output_dir = os.path.join("/home/yiming/cophi/training_dynamic/gcb_tokens/Model", 'Epoch_{}'.format(iter+1))
+        ckpt_output_path = os.path.join(output_dir, 'subject_model_new_batch_retrieval.pth')
+        model.load_state_dict(torch.load(ckpt_output_path),strict=False) 
+        model.to(args.device)
+
+        for step,batch in enumerate(train_dataloader):
+            batch_start_idx = step * args.train_batch_size
+            batch_end_idx = batch_start_idx + args.train_batch_size
+            if batch_start_idx <= sample_index < batch_end_idx:
+                code_inputs = batch[0].to(args.device)  
+                attn_mask = batch[1].to(args.device)
+                position_idx = batch[2].to(args.device)
+                code_outputs = model(code_inputs=code_inputs,attn_mask=attn_mask,position_idx=position_idx)
+                ori2cur_pos = batch[4].to(args.device)
+
+                local_index = sample_index - batch_start_idx
+
+                tokenized_id.append(ori2cur_pos[local_index].tolist())
+                code_last_hidden_state = code_outputs[0]
+                code_tokens.append(code_last_hidden_state[local_index].unsqueeze(0).cpu().detach().numpy())
+
+        code_tokens = np.concatenate(code_tokens, 0)
+
+        output_dir = os.path.join("/home/yiming/cophi/training_dynamic/temp_featrues", 'Epoch_{}'.format(iter+1))
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)  
+
+        print(code_tokens.shape)
+        code_token_output_path = os.path.join(output_dir, 'new_valid_code_tokens_new_align_attention_batch_retrieval.npy')
+        np.save(code_token_output_path, code_tokens)
+
+        with open('/home/yiming/cophi/training_dynamic/temp_featrues/tokenized_id_valid.json', 'w') as f:
+            json.dump(tokenized_id, f)
 
 def extract_indices(similar_pairs):
     """
@@ -1932,15 +2371,19 @@ def main():
         # train(args, model, tokenizer, pool)
         # train_alignment(args, model, tokenizer, pool)
         # save_feature(args, model, tokenizer, pool)
-        train_alignment_sample(args, model, tokenizer, pool)
+        train_alignment_auto_samples(args, model, tokenizer, pool)
+        # train_alignment_sample(args, model, tokenizer, pool)
         # save_attention_features(args, model, tokenizer, pool)
-        save_valid_attention_features(args, model, tokenizer, pool)
-        save_valid_code_attention_features(args, model, tokenizer, pool)
-        save_valid_code_attention_features_aa(args, model, tokenizer, pool)
+        # save_valid_attention_features(args, model, tokenizer, pool)
+        # save_valid_code_attention_features(args, model, tokenizer, pool)
+        # save_valid_code_attention_features_aa(args, model, tokenizer, pool)
         # save_attention_features_code(args, model, tokenizer, pool)
         # train_data_preprocess(args, model, tokenizer, pool)
         # save_tokens_features(args, model, tokenizer, pool)
         # save_tokenized_strs(args, model, tokenizer, pool)
+        # save_multi_valid_code_tokens_embedding(args, model, tokenizer, pool)
+        # save_multi_valid_comment_tokens_embedding(args, model, tokenizer, pool)
+        # save_train_features(args, model, tokenizer, pool)
 
     # Evaluation
     results = {}
